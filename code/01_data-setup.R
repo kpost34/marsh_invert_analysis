@@ -253,6 +253,15 @@ bio_nm <- names(df_2010_bio) %>%
          .) %>%
   str_to_title()
 
+#develop crosswalk
+df_bio_cwalk <- names(df_2010_bio) %>%
+  str_remove("_count_d_vac__count$") %>%
+  str_to_title() %>%
+  tibble(taxon_name=.) %>%
+  bind_cols(
+    taxon = bio_nm
+  )
+
 ## Combine DFs
 df_2010_wide <- df_2010_full_env %>%
   bind_cols(
@@ -315,7 +324,7 @@ df_2010_loc_wide %>%
 
 
 ## Remove all DFs but
-rm(list=setdiff(ls(),ls(pattern="wide|long")))
+rm(list=setdiff(ls(),ls(pattern="wide|long|cwalk")))
 
 
 
