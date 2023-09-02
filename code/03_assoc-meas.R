@@ -3,7 +3,7 @@
 
 
 # Load Packages & DFs===============================================================================
-pacman::p_load(here, tidyverse, ade4, adespatial, vegan, gclus, cluster, FD, cowplot)
+pacman::p_load(here, tidyverse, ade4, adespatial, vegan, gclus, cluster, FD, cowplot, GGally)
 
 source(here("code","01_data-setup.R"))
 #once it's determined which is the best data format, then I'll save to RDS and read that in
@@ -230,27 +230,66 @@ plot_dissim_grid(bio_t_s7, fn=plot_assoc_matrix_taxa)
   #these cases, Spearman's rho or Kenall's tau may be used
 
 ### Pearson r linear correlation among env vars
+#### Calculate Pearson corrs
 env_pearson <- cor(env) %>%
-  round(2) 
+  round(3) 
 
+env_pearson
+
+#### Pull order
 env_o <- order.single(env_pearson)
 
 
-pairs(env[, env_o],
-      lower.pnael = panel.smooth,
-      upper.panel = panel.cor,
-      diag.panel = panel.hist,
-      main = "Pearson Correlation Matrix")
+### Sort correlation matrix
+env_sorted <- env_pearson[env_o, env_o]
 
+
+### Plot correlations using ggpairs
+#### Create smoother function
+lower_smoother <- function(data, mapping, method = "lm", ...) {
+  p <- ggplot(data = data, mapping = mapping) +
+    geom_point(colour = "black") +
+    geom_smooth(method = method, color = "red", se=FALSE, ...) +
+    theme_minimal()
+  p
+}
+
+#### Plot results
+#pearson
 ggpairs(env,
-        upper = list(continuous=wrap(upperFn,method="loess")),
+        upper = list(continuous = wrap("cor", method = "pearson")),
         diag = list(continuous=wrap("barDiag",bins=8,fill="aquamarine2",color="black")),
-        lower = list(continuous=wrap(lowerFn,method="lm")),
-        title = "Bivariate Plots with Histograms and Smooth Curves") +
+        lower = list(continuous=wrap(lower_smoother,method="loess")),
+        title = "Pearson Correlation Matrix") +
+  theme(plot.title = element_text(hjust=0.5, face="bold"))
+
+#spearman
+ggpairs(env,
+        upper = list(continuous = wrap("cor", method = "spearman")),
+        diag = list(continuous=wrap("barDiag",bins=8,fill="aquamarine2",color="black")),
+        lower = list(continuous=wrap(lower_smoother,method="loess")),
+        title = "Spearman Correlation Matrix") +
+  theme(plot.title = element_text(hjust=0.5, face="bold"))
+
+#kendall
+ggpairs(env,
+        upper = list(continuous = wrap("cor", method = "kendall")),
+        diag = list(continuous=wrap("barDiag",bins=8,fill="aquamarine2",color="black")),
+        lower = list(continuous=wrap(lower_smoother,method="loess")),
+        title = "Kendall Correlation Matrix") +
   theme(plot.title = element_text(hjust=0.5, face="bold"))
 
 
 
+## Pre-transformations for species data
+#linear methods (e.g., ANOVA, PCA) which utilize Euclidean distance were previously frowned up for 
+  #species data because they failed to properly treat cases of 0-0 matches. Later, pre-transformations
+  #were found to be appropriate prior to measuring Euclidean distance: relative abundances by site,
+  #chord transformation, Hellinger transformation, chi-square double standardization, and log-chord
+  #transformation
+#note that these five approaches calculate some form of relative abundance per site, removing
+  #the effect of total abundance per site
+#all transformations can be done using decostand()
 
 
 
