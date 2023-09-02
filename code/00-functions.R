@@ -27,7 +27,7 @@ plot_assoc_matrix <- function(dist.obj, ordered = FALSE) {
     rownames_to_column(var="site_x") %>% 
     pivot_longer(!site_x, names_to="site_y", values_to="dist") %>% 
     {if(maxD>1) mutate(.,dist=dist/maxD) else .} %>%
-    mutate(dist = ifelse(taxon_x==taxon_y,
+    mutate(dist = ifelse(site_x==site_y,
                          NA_real_,
                          dist),
            across(!dist,~factor(.x, levels=site_levels)),
