@@ -112,6 +112,55 @@ plot_dissim_grid <- function(dist.obj, fn = plot_assoc_matrix){
 }
 
 
+# Functions for Cluster Analysis====================================================================
+## Grab site label positions and names
+extract_site_tree_info <- function(cluster.tree, nudge) {
+  segment(cluster.tree) %>%
+    filter(xend %in% 1:23) %>%
+    group_by(xend) %>%
+    filter(yend==min(yend)) %>% 
+    ungroup() %>%
+    mutate(yend=yend - nudge) %>%
+    select(ends_with("end")) %>%
+    left_join(
+      label(cluster.tree)[,c("x", "label")],
+      by=c("xend"="x")
+    )
+}
+
+
+## Plot dendrogram
+plot_dendro <- function(cluster.obj, title, nudge) {
+  #convert cluster object to dendro object
+  cluster_tree <- cluster.obj %>% #hclust object
+    as.dendrogram() %>% #converts to dendrogram object
+    hang.dendrogram() %>% #makes leaves hang above x-axis
+    dendro_data(type="rectangle") #extracts plotting data
+
+  #extract labels
+  site_labs <- extract_site_tree_info(cluster_tree, nudge)
+  
+  #plot dendrogram
+  cluster_tree %>%
+    #extracts x-y data from list-object
+    segment() %>%
+    ggplot() +
+    geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
+    geom_text(data=site_labs,
+              aes(x=xend, y=yend, label=label)) +
+    coord_cartesian(ylim=c(-0.02, NA)) +
+    labs(x="site",
+         y="height",
+         title=title) +
+    theme_void() + #removes axes, axis.titles, and axis.text
+    #specify margins as well as center and bold plot title & rotate y-axis title 90o
+    theme(plot.title=element_text(hjust=0.5, face="bold", margin=margin(t=10, b=10)),
+          axis.line.y=element_line(),
+          axis.title.x=element_text(size=14, margin=margin(b=5)),
+          axis.title.y=element_text(size=14, angle=90, margin=margin(r=10, l=5)),
+          axis.text.x=element_blank(),
+          axis.text.y=element_text(margin=margin(r=10)))
+}
 
 
 
