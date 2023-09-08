@@ -114,7 +114,7 @@ plot_dissim_grid <- function(dist.obj, fn = plot_assoc_matrix){
 
 # Functions for Cluster Analysis====================================================================
 ## Grab site label positions and names
-extract_site_tree_info <- function(cluster.tree, nudge) {
+extract_site_tree_info <- function(cluster.tree, nudge=.01) {
   segment(cluster.tree) %>%
     filter(xend %in% 1:23) %>%
     group_by(xend) %>%
@@ -130,7 +130,7 @@ extract_site_tree_info <- function(cluster.tree, nudge) {
 
 
 ## Plot dendrogram
-plot_dendro <- function(cluster.obj, title, nudge) {
+plot_dendro <- function(cluster.obj, title, nudge=.01) {
   #convert cluster object to dendro object
   cluster_tree <- cluster.obj %>% #hclust object
     as.dendrogram() %>% #converts to dendrogram object
@@ -140,6 +140,10 @@ plot_dendro <- function(cluster.obj, title, nudge) {
   #extract labels
   site_labs <- extract_site_tree_info(cluster_tree, nudge)
   
+  #set ymin
+  ymin <- min(site_labs$yend) + nudge
+  ymin <- if(ymin < 0) {ymin} else{0}
+  
   #plot dendrogram
   cluster_tree %>%
     #extracts x-y data from list-object
@@ -148,7 +152,7 @@ plot_dendro <- function(cluster.obj, title, nudge) {
     geom_segment(aes(x=x, y=y, xend=xend, yend=yend)) +
     geom_text(data=site_labs,
               aes(x=xend, y=yend, label=label)) +
-    coord_cartesian(ylim=c(-0.02, NA)) +
+    coord_cartesian(ylim=c(ymin-0.02, NA)) +
     labs(x="site",
          y="height",
          title=title) +
@@ -163,7 +167,17 @@ plot_dendro <- function(cluster.obj, title, nudge) {
 }
 
 
-
+## Convert distances from wide (matrix) to long form
+convert_to_long_df <- function(dist.obj, type=NA) {
+  dist.obj %>%
+    as.matrix() %>%
+    as.data.frame() %>%
+    rownames_to_column(var="site_x") %>% 
+    pivot_longer(!site_x, names_to="site_y", 
+                 values_to=ifelse(!is.na(type),
+                                  paste(type,"dist",sep="_"),
+                                  "dist"))
+}
 
 
 
