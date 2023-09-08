@@ -146,6 +146,183 @@ plot_dendro(bio_ch_UPGMA, "Chord - UPGMA", .015)
 
 
 # Ward's Minimum Variance Clustering================================================================
+#groups are identified by minimizing within-group sum of squares
+
+## Compute Ward's minimum variance clustering
+bio_ch_ward <- hclust(bio_ch, method="ward.D2")
+
+## Plot dendrogram
+### Using plot()
+plot(bio_ch_ward,
+     main="Chord - Ward")
+
+### Using {ggdendro}
+p3 <- plot_dendro(bio_ch_ward, "Chord - Ward", .02)
+#interpretation: a lot more branching occurs towards the bottom of the tree, yielding multiple
+  #larger groups--7-1-3-5-6, 16-9-22, 19-15-13-10-14, 2-11-12-4-8--and smaller groups--20-23 and
+  #17-18--and site 21 by itself
+
+
+# Flexible Clustering===============================================================================
+#clustering method with four parameters--alpha-h, alpha-i, beta, and gamma--which can be adjusted
+  #to generate the aforementioned clustering methods
+
+## Compute beta-flexible clustering using cluster::agnes()
+# beta = -0.25
+bio_ch_beta2 <- agnes(bio_ch, method="flexible", par.method=0.625)
+
+## Change the class of agnes object
+class(bio_ch_beta2) #agnes, twins
+bio_ch_beta2 <- as.hclust(bio_ch_beta2) 
+class(bio_ch_beta2) #hclust
+
+## Plot dendrogram
+### With plot()
+plot(bio_ch_beta2,
+     labels=rownames(bio),
+     main="Chord - Beta-flexible (beta=-0.25)")
+
+### With {ggdendro}
+p4 <- plot_dendro(bio_ch_beta2, "Chord - Beta-flexible (beta=-0.25)", .02)
+
+
+## Compare this method with Ward's Minimum Variance Clustering
+plot_grid(p3, p4)
+#when considering the possibility of flipping the tree on nodes, these trees are nearly identical:
+  #the pairs at the bottom and the larger groups and structure are nearly the same. Site 21 is
+  #placed differently in the two trees.
+
+
+# Interpreting and Comparing Hierarchical Clustering Results========================================
+## To extract more information from the clustering result, use summary(cluster.obj)
+summary(bio_ch_beta2)
+summary(bio_ch_ward)
+
+
+## Cophenetic correlation-----
+#cophenetic distance: distance where two objects become members of the same group. On a dendrogram,
+  #this value can be found by identifying two objects, locating the node that separates them,
+  #and determining the height (distance) at that node
+
+#cophentic matrix: matrix of cophenetic distances among all pairs of objects
+
+#cophenetic correlation: Pearson's r correlation between the original dissimilarity matrix and the
+  #cophenetic matrix; highest cophenetic corr = method that retains most info from dissimilarity
+  #matrix
+
+### Compute cophenetic matrix and correlation of four clustering results
+#### Single linkage clustering
+bio_ch_single_coph <- cophenetic(bio_ch_single)
+cor(bio_ch, bio_ch_single_coph) #0.892
+#note that significance (if used cor.test()) is uninterpretable
+  #because the two sets of data are *not* independent
+
+
+#### Complete linkage clustering
+bio_ch_comp_coph <- cophenetic(bio_ch_complete)
+cor(bio_ch, bio_ch_comp_coph) #0.711
+
+
+#### Average clustering
+bio_ch_UPGMA_coph <- cophenetic(bio_ch_UPGMA)
+cor(bio_ch, bio_ch_UPGMA_coph) #0.917
+
+
+#### Ward clustering
+bio_ch_ward_coph <- cophenetic(bio_ch_ward)
+cor(bio_ch, bio_ch_ward_coph) #0.835
+
+#interpretation: average clustering using UPGMA retains the closest relationship to the chord
+  #distance matrix
+
+
+#### Ward clustering (using Spearman method)
+cor(bio_ch, bio_ch_ward_coph, method="spearman") #0.734
+
+
+
+### Visualize cophenetic correlations vs dissimilarity matrices
+#create vector and list of types and matrices, respectively
+types <- c(NA, "single_coph", "complete_coph", "upgma_coph", "ward_coph")
+
+list_mat_dist_coph <- list(bio_ch, bio_ch_single_coph, bio_ch_comp_coph, bio_ch_UPGMA_coph, bio_ch_ward_coph)
+list_mat_coph <- list_mat_dist_coph[-1]
+
+#create a crosswalk for titling
+method_cwalk <- tibble(method = paste0(types[!is.na(types)],"_dist"),
+                       title = c("Single linkage",
+                                 "Complete linkage",
+                                 "UPGMA",
+                                 "Ward"))
+
+### named_vector (for labeller)
+method_labeller <- list_mat_coph  %>%
+  purrr::map_dbl(cor, bio_ch) %>%
+  round(3) %>%
+  paste(method_cwalk$title, "\nCophenetic correlation =", .) %>%
+  set_names(method_cwalk$method) %>%
+  as_labeller()
+
+
+#feed types & list_matrix_clust into map2 & internal join
+map2(.x=list_mat_dist_coph, .y=types, .f=convert_to_long_df) %>%
+  reduce(inner_join) %>% 
+  pivot_longer(cols=contains("coph"),
+               names_to="method",
+               values_to="coph_dist") %>%
+  left_join(method_cwalk) %>%
+  mutate(method=factor(method, levels=method_cwalk$method)) %>%
+  ggplot(aes(x=dist, y=coph_dist)) +
+  geom_point(shape=1, alpha=0.6) +
+  geom_abline(slope=1, intercept=0) +
+  geom_smooth(method="loess", color="red", linewidth=0.5, se=FALSE) +
+  facet_wrap(~method, labeller=method_labeller) +
+  labs(x="Chord distance",
+       y="Cophenetic distance") +
+  theme_bw() +
+  theme(strip.text=element_text(face="bold", size=13),
+        strip.background=element_blank())
+#interpretation: the smoother that's closest to the 1:1 diagonal yields the greatest correlation,
+  #as evidenced by UPGMA's smoother styaing with the line for ~2/3 of the data followed by single
+  #linkage which deviates slightly below the line
+
+
+### Gower distances
+#Gower distances, calculated as the sum of squared differences between the original dissimilarities
+  #and cophenetic distances, is another method to compare clustering results. Here the smallest
+  #Gower distance is evidence of the best clustering result
+
+list_mat_coph %>%
+  purrr::map_dbl(function(x) {
+    sum((bio_ch - x)^2)
+  }) %>%
+  set_names(method_cwalk$title)
+#interpretation: UPGMA has the smallest Gower distance followed by single linkage (which mirrors
+  #the cophenetic correlation result)
+
+
+## Looking for interpretable clusters-----
+#need to decide where to cut a dendrogram to generate clusters. Clusters can 
+  #be cut at one or more heights and by using subjectivity or other criteria
+
+### Graph of the fusion levels
+#dissimilarity values where a fusion between two branches of a dendrogram occurs. A plot
+  #of the fusion levels can help to identify the cutting height
+
+list_clust <- list(bio_ch_complete, bio_ch_UPGMA, bio_ch_ward, bio_ch_beta2) %>%
+  set_names(c("Complete", "UPGMA", "Ward", "Beta-flexible"))
+
+list_clust %>%
+  
+  purrr::map_df
+  
+  
+
+
+
+
+
+
 
 
 
