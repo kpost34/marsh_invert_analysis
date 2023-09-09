@@ -309,13 +309,63 @@ list_mat_coph %>%
 #dissimilarity values where a fusion between two branches of a dendrogram occurs. A plot
   #of the fusion levels can help to identify the cutting height
 
-list_clust <- list(bio_ch_complete, bio_ch_UPGMA, bio_ch_ward, bio_ch_beta2) %>%
-  set_names(c("Complete", "UPGMA", "Ward", "Beta-flexible"))
+#### Create DF of cluster number vs height
+nm_method <- c("Complete", "UPGMA", "Ward", "Beta-flexible")
 
-list_clust %>%
-  
-  purrr::map_df
-  
+df_n_clust_height <- list(bio_ch_complete, bio_ch_UPGMA, bio_ch_ward, bio_ch_beta2) %>%
+  set_names(nm_method) %>%
+  purrr::map_df("height") %>%
+  bind_cols(n_clust=23:2,.) %>%
+  pivot_longer(!n_clust, names_to="method", values_to="height") %>%
+  arrange(n_clust)
+
+
+#### Plot fusion levels
+nm_method_strip <- paste0("Fusion levels - Chord - ", nm_method)
+
+
+df_n_clust_height %>%
+  mutate(method=paste0("Fusion levels - Chord - ", method),
+         method=factor(method, levels=nm_method_strip)) %>%
+  ggplot(aes(x=height, y=n_clust)) +
+  geom_step(color="gray50") +
+  geom_text(aes(label=n_clust), size=3, color="red") +
+  labs(x="h (node height)",
+       y="k (number of clusters)") +
+  facet_wrap(~method, scales="free_x") +
+  theme_bw() +
+  theme(strip.text=element_text(face="bold", size=12),
+        strip.background=element_blank())
+
+#interpretation: read from right to left and recognize long horizontal lines which represent cutting
+  #areas: complete: 6, UPGMA: 5, Ward: 2 (or 6); and Beta-Flexible: 5
+#look at dendros and apply cluster number cut to them
+
+#### Grab heights at these cuts
+fuse_h <- df_n_clust_height %>% 
+  filter( #grab n_clust from fusion levels plots
+    n_clust==5 & method %in% c("Complete", "Beta-flexible")|
+      n_clust==6 & method=="UPGMA"|
+        n_clust==2 & method=="Ward"
+  ) %>%
+  pull(height, name="method") %>%
+  .[nm_method] #sort
+
+
+#### Assign dendros names
+p_fuse1 <- plot_dendro(bio_ch_complete, "Chord - Complete Linkage", .02)
+p_fuse2 <- plot_dendro(bio_ch_UPGMA, "Chord - UPGMA", .015)
+p_fuse3 <- plot_dendro(bio_ch_ward, "Chord - Ward", .02)
+p_fuse4 <- plot_dendro(bio_ch_beta2, "Chord - Beta-flexible (beta=-0.25)", .02)
+
+list(p_fuse1, p_fuse2, p_fuse3, p_fuse4) %>%
+  purrr::map2(.y = fuse_h, function(x, y) {
+    x +
+      geom_hline(yintercept=y, linetype=2, color="red") +
+      geom_text()
+  }) %>%
+  plot_grid(plotlist=., nrow=2)
+
   
 
 
