@@ -130,7 +130,7 @@ extract_site_tree_info <- function(cluster.tree, nudge=.01) {
 
 
 ## Plot dendrogram
-plot_dendro <- function(cluster.obj, title, nudge=.01) {
+plot_dendro <- function(cluster.obj, title="", nudge=.01) {
   #convert cluster object to dendro object
   cluster_tree <- cluster.obj %>% #hclust object
     as.dendrogram() %>% #converts to dendrogram object
