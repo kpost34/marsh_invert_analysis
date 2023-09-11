@@ -12,6 +12,7 @@ source(here("code","01_data-setup.R"))
 source(here("code", "00-functions.R"))
 
 bio <- df_2010_bio_wide[,-1]
+site_cwalk <- df_2010_wide[,c("site", "loc")]
 
 
 # Hierarchical Clustering Based on Links============================================================
@@ -320,7 +321,7 @@ df_n_clust_height <- list(bio_ch_complete, bio_ch_UPGMA, bio_ch_ward, bio_ch_bet
   arrange(n_clust)
 
 
-#### Plot fusion levels
+#### Plot fusion levels & dendrograms with cut heights
 nm_method_strip <- paste0("Fusion levels - Chord - ", nm_method)
 
 
@@ -337,19 +338,34 @@ df_n_clust_height %>%
   theme(strip.text=element_text(face="bold", size=12),
         strip.background=element_blank())
 
-#interpretation: read from right to left and recognize long horizontal lines which represent cutting
-  #areas: complete: 6, UPGMA: 5, Ward: 2 (or 6); and Beta-Flexible: 5
+#interpretation: read from right to left and identify h lines preceding large increases which represent 
+  #cutting areas: complete: 7, UPGMA: 5, Ward: 6; and Beta-Flexible: 8
 #look at dendros and apply cluster number cut to them
 
 #### Grab heights at these cuts
+#simple version: height only as vector
 fuse_h <- df_n_clust_height %>% 
   filter( #grab n_clust from fusion levels plots
-    n_clust==5 & method %in% c("Complete", "Beta-flexible")|
-      n_clust==6 & method=="UPGMA"|
-        n_clust==2 & method=="Ward"
+    n_clust==7 & method=="Complete"|
+      n_clust==5 & method=="UPGMA"|
+        n_clust==6 & method=="Ward"|
+          n_clust==8 & method=="Beta-flexible"
   ) %>%
   pull(height, name="method") %>%
   .[nm_method] #sort
+
+#complex version: df of height and n_clust
+list_n_clust_h <- df_n_clust_height %>% 
+  filter( #grab n_clust from fusion levels plots
+    n_clust==7 & method=="Complete"|
+      n_clust==5 & method=="UPGMA"|
+        n_clust==6 & method=="Ward"|
+          n_clust==8 & method=="Beta-flexible"
+  ) %>%
+  mutate(method=factor(method, levels=nm_method)) %>%
+  arrange(method) %>%
+  split(1:nrow(.))
+  
 
 
 #### Assign dendros names
@@ -358,24 +374,216 @@ p_fuse2 <- plot_dendro(bio_ch_UPGMA, "Chord - UPGMA", .015)
 p_fuse3 <- plot_dendro(bio_ch_ward, "Chord - Ward", .02)
 p_fuse4 <- plot_dendro(bio_ch_beta2, "Chord - Beta-flexible (beta=-0.25)", .02)
 
+
+#### Plot dendros with cut lines
+#simple version
 list(p_fuse1, p_fuse2, p_fuse3, p_fuse4) %>%
   purrr::map2(.y = fuse_h, function(x, y) {
     x +
-      geom_hline(yintercept=y, linetype=2, color="red") +
-      geom_text()
+      geom_hline(yintercept=y, linetype=2, color="red")
   }) %>%
   plot_grid(plotlist=., nrow=2)
 
+#complex version
+list(p_fuse1, p_fuse2, p_fuse3, p_fuse4) %>%
+  purrr::map2(.y = list_n_clust_h, function(dendro, lab) {
+    dendro +
+      geom_hline(yintercept=lab[["height"]], linetype=2, color="red") +
+      geom_text(aes(x=22, y=lab[["height"]], label=paste("k =", lab["n_clust"])))
+  }) %>%
+  plot_grid(plotlist=., nrow=2)
+#interpretation:
+  #complete: k = 7, two groups of 1, two groups of 2, group of 3, group of 4, and one large group;
+  #UPGMA: k = 5, group of 1, two groups of 2, group of 5, and one large group;
+  #Ward: k = 6, group of 1, two groups of 2, and 3 medium-sized groups;
+  #beta-flexible: k = 8, two groups of 1, two groups of 2, group of 3, group of 4, and two 
+    #medium sized groups
+
+#interpretation: [add map then describe]
   
 
+### Set common number of groups and compare group contents among dendrograms
+#### First choose k (group number) where there is at least a small jump in all four fusion levels
+k <- 6 #best value using all four methods
+
+#### Cut dendros and create membership vectors
+bioch_single_g <- cutree(bio_ch_single, k=k)
+bioch_complete_g <- cutree(bio_ch_complete, k=k)
+bioch_UPGMA_g <- cutree(bio_ch_UPGMA, k=k)
+bioch_ward_g <- cutree(bio_ch_ward, k=k)
+bioch_beta_g <- cutree(bio_ch_beta2, k=k)
+
+#### Compare classification by constructing contingency tables
+table(bioch_single_g, bioch_complete_g) #3 classifications differ
+table(bioch_single_g, bioch_UPGMA_g) #0 classifications differ
+table(bioch_single_g, bioch_ward_g) #4 classifications differ
+table(bioch_complete_g, bioch_UPGMA_g) #3 classifications differ
+table(bioch_complete_g, bioch_ward_g) #1 classification differs
+table(bioch_UPGMA_g, bioch_ward_g) #4 classifications differ
+table(bioch_beta_g, bioch_ward_g) #0 classifications differ
+
+#single-UPGMA and beta-Ward are identical and complete-Ward are nearly identical
 
 
+### Compare two dendrograms to highlight common subtrees
+#compare dendros and seek common clusters to help select a partition found by multiple clustering
+  #methods
+
+#### Objects of class "hclust" must be first converted into objects of class "dendrogram"
+#### Using dendextend::tanglegram()
+class(bio_ch_ward)
+dend1 <- as.dendrogram(bio_ch_ward)
+class(dend1)
+dend2 <- as.dendrogram(bio_ch_complete)
+dend12 <- dendlist(dend1, dend2)
+tanglegram(
+  untangle(dend12),
+  sort=TRUE,
+  common_subtrees_color_branches=TRUE,
+  main_left="Ward method",
+  main_right="Complete linkage"
+)
+
+#interpretation: robust cluters: 1-3-5-6, 2-11, and 4-8-12
 
 
+#### Using ggendrogram
+#complete--l-r
+# bio_ch_comp_data <- dendro_data(bio_ch_complete, "rectangle")
+# 
+# p_comp_lr <- ggplot() +
+#   geom_segment(data=segment(bio_ch_comp_data),
+#                aes(x=x, y=y, xend=xend, yend=yend)) +
+#   geom_text(data=label(bio_ch_ward_data),
+#             aes(x=x, y=y, label=label, hjust=0)) +
+#   coord_flip() +
+#   scale_y_reverse() +
+#   theme_void() +
+#   theme(axis.text.x=element_text()) 
+# 
+# 
+# #ward--r-l
+# # bio_ch_ward_data <- dendro_data(bio_ch_ward, type="rectangle")
+# bio_ch_ward_data <- dendro_data(bio_ch_ward, "rectangle")
+# 
+# p_ward_rl <- ggplot() +
+#   geom_segment(data=segment(bio_ch_ward_data),
+#                aes(x=x, y=y, xend=xend, yend=yend)) +
+#   geom_text(data=label(bio_ch_ward_data),
+#             aes(x=x, y=y, label=label, hjust=1)) +
+#   coord_flip() +
+#   theme_void() +
+#   theme(axis.text.x=element_text()) 
+# 
+# 
+# 
+# 
+# #segments that join the clusters
+# comp_ward_link <- tibble(y1=1:nrow(bio_ch_comp_data$labels),
+#                          y2=match(bio_ch_comp_data$labels$label, bio_ch_ward_data$labels$label))
+# 
+# p_m <- ggplot() +
+#   geom_segment(data=ward_comp_link, aes(x=0, y=y1, xend=1, yend=y2), 
+#                color="grey") +
+#   theme_void()
+# 
+# plot_grid(p_comp_lr, p_m, p_ward_rl, ncol=3, rel_widths=c(1, 0.5, 1))
 
 
+### Multiscale bootstrap resampling
+#assess uncertainty/robustness of a classification (dendrogram) via bootstrap resampling
+
+#### Compute p-values for all clusters (edges) of the dendrogram
+bio_norm <- decostand(bio, "normalize") #normalize data (no distances)
+
+bioch_pv <- t(bio_norm) %>% #pvclust takes transposed data
+  pvclust(method.hclust="ward.D2", #Ward clustering
+          method.dist="euc",
+          parallel=TRUE)
+
+#### Plot dendrogram with p-values
+plot(bioch_pv)
+
+#### Highlight clusters with high AU p-values
+pvrect(bioch_pv, alpha=0.95, pv="au") #au p-values are more accurate than bp p-values
+lines(bioch_pv)
+pvrect(bioch_pv, alpha=0.91, border=4)
+#red boxes + underlined = significant clusters, whereas blue boxes = less significant clusters
+
+#interpretation: most sites are members of significant clusters (p<.05). However, there is one
+  #blue box (without underlining) and sites 7 and 21. This supports robust clustering via
+  #Ward
 
 
+### Average silhouette widths
+#average measure of degree of membership of an object to its cluster. It uses avg dissimilarity
+  #between this object and all objects of the cluster to which it belongs compared to the next
+  #closest cluster; range from -1 to 1, with larger values representing stronger clustering
+
+#### Choose and rename the dendrogram ("hclust" object)
+hc <- bio_ch_ward
+
+#### Plot average silhouette widths using Ward clustering for all partitions except for trivial
+  #partitions 
+#book approach
+Si <- numeric(nrow(bio))
+for(k in 2:(nrow(bio) - 1)) {
+  sil <- silhouette(cutree(hc, k=k), bio_ch)
+  Si[k] <- summary(sil)$avg.width
+}
+k.best <- which.max(Si)
+plot(
+  1:nrow(bio),
+  Si,
+  type="h",
+  main="Silhouette-optimal number of clusters",
+  xlab="k (number of clusters)",
+  ylab="Average silhouette width"
+)
+axis(
+  1,
+  k.best,
+  paste("optimum", k.best, sep="\n"),
+  col="red",
+  font=2,
+  col.axis="red"
+)
+points(k.best,
+       max(Si),
+       col="red",
+       cex=1.5)
+
+#purrr approach
+ks <- 2:(nrow(bio)-1)
+Si <- rep(0, nrow(bio))
+
+df_sil_width <- ks %>%
+  purrr::map_dbl(function(x) {
+    silhouette(cutree(hc, k=x), bio_ch) %>%
+      summary() %>%
+      .[["avg.width"]]
+  }) %>%
+  tibble(sil_width=.) %>%
+  bind_cols(k=2:22, .) %>%
+  mutate(k_best=sil_width==max(sil_width))
+
+df_sil_width %>%
+  ggplot() +
+  geom_linerange(aes(x=k, ymin=0, ymax=sil_width)) +
+  geom_point(data=. %>% filter(k_best),
+             aes(x=k, y=sil_width),
+             color="red",
+             size=3) +
+  geom_text(data=. %>% filter(k_best),
+            aes(x=k, y=sil_width, 
+                label=paste0("optimum \n k=",k)),
+            color="red",
+            nudge_x=2) +
+  labs(x="k (number of clusters)",
+       y="Average silhouette width",
+       title="Silhouette-optimal number of clusters") +
+  theme_bw(base_size=13) +
+  theme(plot.title=element_text(face="bold", hjust=0.5))
 
 
 
