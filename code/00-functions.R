@@ -180,6 +180,26 @@ convert_to_long_df <- function(dist.obj, type=NA) {
 }
 
 
+## Make line graphs to determine optimal k (e.g., silhouette plots, IndVal)
+optimize_k_line_graph <- function(data, y, y_lab, main) {
+  data %>%
+    ggplot() +
+    geom_linerange(aes(x=k, ymin=0, ymax={{y}})) +
+    geom_point(data=. %>% filter(k_best),
+               aes(x=k, y={{y}}),
+               color="red",
+               size=3) +
+    geom_text(data=. %>% filter(k_best),
+              aes(x=k, y={{y}}, 
+                  label=paste0("optimum \n k=",k)),
+              color="red",
+              nudge_x=2) +
+    labs(x="k (number of clusters)",
+         y=y_lab,
+         title=main) +
+    theme_bw(base_size=13) +
+    theme(plot.title=element_text(face="bold", hjust=0.5))
+}
 
 
 
