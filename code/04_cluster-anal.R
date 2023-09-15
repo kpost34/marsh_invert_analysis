@@ -527,11 +527,14 @@ hc <- bio_ch_ward
   #partitions 
 #book approach
 Si <- numeric(nrow(bio))
+
 for(k in 2:(nrow(bio) - 1)) {
   sil <- silhouette(cutree(hc, k=k), bio_ch)
   Si[k] <- summary(sil)$avg.width
 }
+
 k.best <- which.max(Si)
+
 plot(
   1:nrow(bio),
   Si,
@@ -540,6 +543,7 @@ plot(
   xlab="k (number of clusters)",
   ylab="Average silhouette width"
 )
+
 axis(
   1,
   k.best,
@@ -548,6 +552,7 @@ axis(
   font=2,
   col.axis="red"
 )
+
 points(k.best,
        max(Si),
        col="red",
@@ -567,6 +572,7 @@ df_sil_width <- ks %>%
   bind_cols(k=2:22, .) %>%
   mutate(k_best=sil_width==max(sil_width))
 
+#hard-coded
 df_sil_width %>%
   ggplot() +
   geom_linerange(aes(x=k, ymin=0, ymax=sil_width)) +
@@ -584,6 +590,98 @@ df_sil_width %>%
        title="Silhouette-optimal number of clusters") +
   theme_bw(base_size=13) +
   theme(plot.title=element_text(face="bold", hjust=0.5))
+
+#by fn
+optimize_k_line_graph(df_sil_width, y=sil_width, y_lab="Average silhouette width", 
+                      main="Silhouette-optimal number of clusters")
+
+#interpretation: revisit once I've landed on the correct method first
+
+
+#### Comparison between dissimilarity matrix and binary matrices representing partitions
+#compares original dissimilarity matrix with binary matrices of the dendrogram cut at different
+  #levels yielding different group memberships. Goal = choose highest correlation
+
+
+##### Optimal number of clusters according to matrix correlation statistic (Pearson)
+
+grpdist <- function(X) {
+  gr <- as.data.frame(as.factor(X))
+  distgr <- daisy(gr, "gower")
+  distgr
+}
+
+#book approach
+kt <- data.frame(k=1:nrow(bio), r=0)
+
+for(i in 2:(nrow(bio)-1)) {
+  gr <- cutree(hc, i)
+  distgr <- grpdist(gr)
+  mt <- cor(bio_ch, distgr, method="pearson")
+  kt[i, 2] <- mt
+}
+
+k.best <- which.max(kt$r)
+
+plot(
+  kt$k,
+  kt$r,
+  type="h",
+  main="Matrix correlation-optimal number of clusters",
+  xlab="k (number of clusters)",
+  ylab="Pearson's correlation"
+)
+
+axis(
+  1,
+  k.best,
+  paste("optimum", k.best, sep="\n"),
+  col="red",
+  font=2,
+  col.axis="red"
+)
+
+points(k.best,
+       max(kt$r),
+       pch=16,
+       col="red",
+       cex=1.5)
+
+
+#purrr approach
+df_kt <- 2:22 %>%
+  purrr::map_dbl(function(x) {
+    cutree(hc, x) %>%
+      grpdist() %>%
+      cor(bio_ch, method="pearson")
+  }) %>%
+  c(0, ., 0) %>%
+  tibble(k=1:nrow(bio),
+         r=.) %>%
+  mutate(k_best=r==max(r))
+
+optimize_k_line_graph(df_kt, r, "Pearson's correlation", 
+                      "Matrix correlation-optimal number of clusters")
+
+#interpretation: 3-7 clusters would yield a high correlation with an optimum at 5 clusters
+
+
+### Species fidelity analysis
+#clusters retained based on presence of "indicator" species, which are species that are more
+  #frequent and abundant in sites that make up a cluster
+#thus, if clusters are defined in this way, they would maximize 1) sum of indicator values and 2)
+  #proportion of clusters with significant indicator species
+
+
+
+
+
+
+
+
+
+
+
 
 
 
