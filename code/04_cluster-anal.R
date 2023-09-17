@@ -444,75 +444,39 @@ tanglegram(
   main_right="Complete linkage"
 )
 
-#interpretation: robust cluters: 1-3-5-6, 2-11, and 4-8-12
-
-
-#### Using ggendrogram
-#complete--l-r
-# bio_ch_comp_data <- dendro_data(bio_ch_complete, "rectangle")
-# 
-# p_comp_lr <- ggplot() +
-#   geom_segment(data=segment(bio_ch_comp_data),
-#                aes(x=x, y=y, xend=xend, yend=yend)) +
-#   geom_text(data=label(bio_ch_ward_data),
-#             aes(x=x, y=y, label=label, hjust=0)) +
-#   coord_flip() +
-#   scale_y_reverse() +
-#   theme_void() +
-#   theme(axis.text.x=element_text()) 
-# 
-# 
-# #ward--r-l
-# # bio_ch_ward_data <- dendro_data(bio_ch_ward, type="rectangle")
-# bio_ch_ward_data <- dendro_data(bio_ch_ward, "rectangle")
-# 
-# p_ward_rl <- ggplot() +
-#   geom_segment(data=segment(bio_ch_ward_data),
-#                aes(x=x, y=y, xend=xend, yend=yend)) +
-#   geom_text(data=label(bio_ch_ward_data),
-#             aes(x=x, y=y, label=label, hjust=1)) +
-#   coord_flip() +
-#   theme_void() +
-#   theme(axis.text.x=element_text()) 
-# 
-# 
-# 
-# 
-# #segments that join the clusters
-# comp_ward_link <- tibble(y1=1:nrow(bio_ch_comp_data$labels),
-#                          y2=match(bio_ch_comp_data$labels$label, bio_ch_ward_data$labels$label))
-# 
-# p_m <- ggplot() +
-#   geom_segment(data=ward_comp_link, aes(x=0, y=y1, xend=1, yend=y2), 
-#                color="grey") +
-#   theme_void()
-# 
-# plot_grid(p_comp_lr, p_m, p_ward_rl, ncol=3, rel_widths=c(1, 0.5, 1))
+#interpretation: robust clusters: 1-3-5-6, 2-11, and 4-8-12
 
 
 ### Multiscale bootstrap resampling
 #assess uncertainty/robustness of a classification (dendrogram) via bootstrap resampling
 
+#use UPGMA (had highest cophenetic clustering, cophenetic distance-chord distance plot closest 
+  #to diagonal, and smallest Gower's distance)
+
 #### Compute p-values for all clusters (edges) of the dendrogram
 bio_norm <- decostand(bio, "normalize") #normalize data (no distances)
 
-bioch_pv <- t(bio_norm) %>% #pvclust takes transposed data
-  pvclust(method.hclust="ward.D2", #Ward clustering
+#### Compute p-values for all clusters (edges) of the dendrogram
+bioch_pv_upgma <- t(bio_norm) %>% #pvclust takes transposed data
+  pvclust(method.hclust="average", #UPGMA clustering
           method.dist="euc",
           parallel=TRUE)
 
 #### Plot dendrogram with p-values
-plot(bioch_pv)
+plot(bioch_pv_upgma)
 
 #### Highlight clusters with high AU p-values
-pvrect(bioch_pv, alpha=0.95, pv="au") #au p-values are more accurate than bp p-values
-lines(bioch_pv)
-pvrect(bioch_pv, alpha=0.91, border=4)
+pvrect(bioch_pv_upgma, alpha=0.95, pv="au") #au p-values are more accurate than bp p-values
+lines(bioch_pv_upgma)
+pvrect(bioch_pv_upgma, alpha=0.9, border=4) #note: lowered alpha from 0.91 to 0.9
 #red boxes + underlined = significant clusters, whereas blue boxes = less significant clusters
 
-#interpretation: most sites are members of significant clusters (p<.05). However, there is one
-  #blue box (without underlining) and sites 7 and 21. This supports robust clustering via
-  #Ward
+#interpretation: this shows 4 clusters (3 clusters of 2+ sites and 1 cluster of 1). Of the three
+  #multi-site clusters, two are significant and one is marginally significant. However, note that
+  #in comparison to the five-cluster model (from the fusion plots), the two 'subclusters' in the
+  #right-most clusters have probabilities (?) of 100 and 98. Note that sites 17 and 18 are adjacent
+  #on the map: 17 is in SE NC and 18 is in the peninsula of MD
+
 
 
 ### Average silhouette widths
@@ -521,7 +485,7 @@ pvrect(bioch_pv, alpha=0.91, border=4)
   #closest cluster; range from -1 to 1, with larger values representing stronger clustering
 
 #### Choose and rename the dendrogram ("hclust" object)
-hc <- bio_ch_ward
+hc <- bio_ch_UPGMA
 
 #### Plot average silhouette widths using Ward clustering for all partitions except for trivial
   #partitions 
@@ -569,7 +533,7 @@ df_sil_width <- ks %>%
       .[["avg.width"]]
   }) %>%
   tibble(sil_width=.) %>%
-  bind_cols(k=2:22, .) %>%
+  bind_cols(k=2:22, .) %>% #ks?
   mutate(k_best=sil_width==max(sil_width))
 
 #hard-coded
@@ -595,7 +559,8 @@ df_sil_width %>%
 optimize_k_line_graph(df_sil_width, y=sil_width, y_lab="Average silhouette width", 
                       main="Silhouette-optimal number of clusters")
 
-#interpretation: revisit once I've landed on the correct method first
+#interpretation: Silhouette plots indicates that k = 5 is the optimal number of clusters. This is
+  #supported by the fusion plot (and partially supported by the bootstrapping)
 
 
 #### Comparison between dissimilarity matrix and binary matrices representing partitions
@@ -660,10 +625,10 @@ df_kt <- 2:22 %>%
          r=.) %>%
   mutate(k_best=r==max(r))
 
-optimize_k_line_graph(df_kt, r, "Pearson's correlation", 
-                      "Matrix correlation-optimal number of clusters")
+optimize_k_line_graph(df_kt, r, y_lab="Pearson's correlation", 
+                      main="Matrix correlation-optimal number of clusters")
 
-#interpretation: 3-7 clusters would yield a high correlation with an optimum at 5 clusters
+#interpretation: 4-6 clusters would yield a high correlation with an optimum at 5 clusters
 
 
 ### Species fidelity analysis
@@ -672,7 +637,210 @@ optimize_k_line_graph(df_kt, r, "Pearson's correlation",
 #thus, if clusters are defined in this way, they would maximize 1) sum of indicator values and 2)
   #proportion of clusters with significant indicator species
 
+#book approach
+IndVal <- numeric(nrow(bio))
+ng <- numeric(nrow(bio))
 
+for(k in 2:(nrow(bio) - 1)) {
+  iva <- indval(bio, cutree(hc, k=k), numitr=1000)
+  gr <- factor(iva$maxcls[iva$pval <= 0.05])
+  ng[k] <- length(levels(gr))/k
+  iv <- iva$indcls[iva$pval <= 0.05]
+  IndVal[k] <- sum(iv)
+}
+
+k.best <- which.max(IndVal)
+
+col3b <- col3a <- rep(1, nrow(bio))
+col3a[which.max(IndVal)] <- 3
+col3b[which.max(ng)] <- 3
+
+
+par(mfrow=c(1, 2))
+plot(
+  1:nrow(bio),
+  IndVal,
+  type="h",
+  main="IndVal-optimal number of clusters",
+  xlab="k (number of clusters)",
+  ylab="IndVal sum",
+  col=col3a
+)
+axis(
+  1,
+  k.best,
+  paste("optimum", k.best, sep="\n"),
+  col="red",
+  font=2,
+  col.axis="red"
+)
+points(
+  which.max(IndVal),
+  max(IndVal),
+  pch=16,
+  col="red",
+  cex=1.5
+)
+plot(
+  1:nrow(bio),
+  ng,
+  type="h",
+  xlab="k (number of groups)",
+  ylab="Ratio",
+  main="Proportion of clusters with significant indicator species",
+  col=col3b
+)
+points(
+  which.max(ng),
+  max(ng),
+  pch=16,
+  col="red",
+  cex=1.5
+)
+
+#interpretation: no clear best. Optimum number using IndVal sum is 5 clusters but k = 5 does not
+  #have ng=1 or the max ng.
+
+#purrr approach
+ks <- 2:(nrow(bio)-1)
+ng <- numeric(nrow(bio))
+
+df_indval <- ks %>%
+  purrr::map_df(function(x) {
+    iva <- indval(bio, cutree(hc, k=x), numitr=1000) 
+    gr <- factor(iva$maxcls[iva$pval <= 0.05])
+    ng[x] <- length(levels(gr))/x
+    iv <- iva$indcls[iva$pval <= 0.05]
+    IndVal[x] <- sum(iv)
+    
+    tibble(k=x, ng=ng[x], IndVal=IndVal[x])
+  }) %>%
+  bind_rows(
+    tibble(
+      k=c(1, 23), ng=c(0, 0), IndVal=c(0, 0)
+    )
+  ) %>%
+  #k_best = k + 1 where ng==1 (or max ng since none = 1)
+  mutate(ng_best=ng==max(ng),
+         k_best=IndVal==max(IndVal))
+
+#by fn
+#IndVal
+p1 <- optimize_k_line_graph(df_indval, 
+                      y=IndVal,
+                      y_lab="IndVal sum", 
+                      main="IndVal-optimal number of clusters",
+                      col=TRUE)
+
+#ratio
+p2 <- optimize_k_line_graph(df_indval, 
+                      y=ng,
+                      k_best=ng_best,
+                      y_lab="Ratio", 
+                      main="Proportion of clusters with significant indicator species",
+                      col=TRUE)
+
+plot_grid(p1, p2, labels="auto", label_x=0.9, label_y=0.925)
+#interpretation: no clear best. Optimum number using IndVal sum is 5 clusters but k = 5 does not
+  #have ng=1 or the max ng. The max ng is 1, meaning that all clusters have indicator species, but
+  #this occurs when k=2. However, optimum k = 5 for silhouette widths, matrix correlation, and 
+  #fusion plot
+
+
+### Silhouette plot of the final partition
+#go with k=5 and determine if group memberships are appropriate
+
+#book approach
+k <- 5
+
+bioch_UPGMA_g <- cutree(bio_ch_ward, k=k)
+sil <- silhouette(bioch_UPGMA_g, bio_ch)
+rownames(sil) <- row.names(bio)
+
+plot(
+  sil,
+  main="Silhouette plot - Chord - UPGMA",
+  cex.names=0.8, 
+  col=2:(k + 1),
+  nmax=100
+)
+
+
+#tidyverse approach
+n <- nrow(bio)
+k <- 5
+bioch_UPGMA_g <- cutree(bio_ch_ward, k=k)
+sil <- silhouette(bioch_UPGMA_g, bio_ch)
+
+k_cols <- c("1" = "red", "2" = "green", "3" = "blue", "4" = "aquamarine")
+
+df_k_sil <- tibble(site=seq_len(n)) %>%
+  bind_cols(sil) %>%
+  group_by(cluster) %>%
+  mutate(k_size=n(),
+         sil_width_avg=mean(sil_width) %>%
+           round(., 2),
+         text_x=case_when(
+           cluster==1 ~ 0.9*n,
+           cluster==2 ~ 0.5*n,
+           cluster==3 ~ 0.2*n,
+           cluster==4 ~ 0.1*n,
+           TRUE       ~ NA_real_)
+         ) %>%
+  ungroup() %>%
+  mutate(sil_width_global_avg=mean(sil_width) %>%
+           round(., 2)) %>%
+  arrange(desc(cluster), sil_width) %>%
+  mutate(cluster=as.factor(cluster),
+         site=as.character(site),
+         site=fct_inorder(site))
+
+
+df_k_sil_lab <- df_k_sil %>%
+  select(cluster, k_size, sil_width_avg, text_x) %>%
+  distinct()
+
+df_k_sil %>%
+  ggplot() +
+  geom_col(aes(x=site, y=sil_width, fill=cluster)) +
+  geom_text(data = df_k_sil_lab,
+            aes(x=text_x, y=0.925, 
+                label=paste0(cluster, ": ", k_size, " | ", sil_width_avg))) +
+  annotate("text", x= n, y=0.925, 
+           label=paste("Avg si:", unique(df_k_sil$sil_width_global_avg))) +
+  scale_y_continuous(limits=c(0, 1), breaks=seq(0, 1, 0.2)) +
+  scale_fill_manual(values=k_cols, guide="none") +
+  coord_flip() +
+  labs(title="Silhouette plot - Chord - UPGMA",
+       subtitle=paste0("n = ", n),
+       y="Silhouette width si") +
+  theme_void() +
+  theme(axis.text=element_text(),
+        axis.line.x=element_line(),
+        axis.title.x=element_text(margin=margin(t=5, b=10)),
+        plot.title=element_text(face="bold"))
+#interpretation: no misclassifications (all positive), clusters 3 and 4 (smallest clusters aside
+  #from solo cluster of site 21) have strongest classification
+
+
+### Final dendrogram with graphical options
+#final tree with custom options
+
+#plot()
+bio_chUPGMA_o <- reorder.hclust(bio_ch_UPGMA, bio_ch)
+
+plot(
+  # bio_chUPGMA_o,
+  bio_ch_UPGMA,
+  hang=-1,
+  xlab="5 groups",
+  ylab="Height",
+  main="Chord - UPGMA (reordered)",
+  labels=cutree(bio_chUPGMA_o, k=k)
+)
+
+rect.hclust(bio_chUPGMA_o, k=k)
+rect.hclust(bio_chUPGMA_o, k=k, border=c(1, 2, 3, 4, 5))
 
 
 
