@@ -5,7 +5,7 @@
 # Load Packages & DFs===============================================================================
 pacman::p_load(here, tidyverse, ade4, adespatial, vegan, gclus, cluster, pvclust, RColorBrewer,
                labdsv, rioja, indicspecies, dendextend, vegclust, 
-               colorspace, agricolae, picante, ggdendro, cowplot)
+               colorspace, agricolae, picante, ggdendro, cowplot, sf)
 
 source(here("code","01_data-setup.R"))
 #once it's determined which is the best data format, then I'll save to RDS and read that in
@@ -825,30 +825,57 @@ df_k_sil %>%
 
 ### Final dendrogram with graphical options
 #final tree with custom options
-
-#plot()
+#using dendextend
+# Reorder clusters
 bio_chUPGMA_o <- reorder.hclust(bio_ch_UPGMA, bio_ch)
 
-plot(
-  # bio_chUPGMA_o,
-  bio_ch_UPGMA,
-  hang=-1,
-  xlab="5 groups",
-  ylab="Height",
-  main="Chord - UPGMA (reordered)",
-  labels=cutree(bio_chUPGMA_o, k=k)
+# Convert the hclust object into a "dendrogram" object
+dend <- as.dendrogram(bio_chUPGMA_o)
+
+# Plot the dendrogram with colored branches
+dend %>%
+  set("branches_k_color", k=k) %>%
+  plot()
+
+# Use standard colors for clusters
+clusters <- cutree(dend, k)[order.dendrogram(dend)]
+
+dend %>%
+  set("branches_k_color", k=k, value=unique(clusters) + 1) %>%
+  plot(main="Final Tree: Chord Distances - UPGMA Method", xlab="Site", ylab="Height")
+
+
+
+### Spatial plot of the clustering result
+#### Create crosswalk
+df_2010_loc_wide %>%
+  select(site, lat, lon) %>%
+  bind_cols(cluster=as.character(bioch_UPGMA_g)) %>%
+  ggplot(aes(x=lon, y=lat)) +
+  geom_point(aes(shape=cluster, color=cluster), size=4) +
+  geom_text(aes(label=site), nudge_x=0.5, nudge_y=0.25) +
+  labs(x="Longitude",
+       y="Latitude",
+       shape="Cluster") +
+  theme_bw()
+  
+#interpretation: clusters tend to be closer together geographically but there's definitely overlap.
+  #Cluster 1 sites occur in the Gulf of Mexico. Cluster 2 sites are in the GoM, se Atlatic coast,
+  #and as far north as NJ (site 19). Cluster 3 contains two sites that occur near MD/VA and NC.
+  #Cluster 4 comprises two sites that are separated significantly by distance, and Cluster 5
+  #has only one site (21) that's on the New England coast.
+  
+
+### Heat map and ordered community table
+#### Align a heat map with the dendrogram
+heatmap(
+  1-as.matrix(bio_ch), #am using 1 - association matrix to get a dark diagonal
+  Rowv=dend,
+  symm=TRUE,
+  margin=c(3,3)
 )
-
-rect.hclust(bio_chUPGMA_o, k=k)
-rect.hclust(bio_chUPGMA_o, k=k, border=c(1, 2, 3, 4, 5))
-
-
-
-
-
-
-
-
+#interpretation: most closely related sites occur in groups 1-3-6-5-7 (cluster 1), 20-23, 
+  #18-17 (cluster 3), and a large group in the middle: 19-10-14-13-15-2-11-4-8-12-16-22 (cluster 2)
 
 
 
