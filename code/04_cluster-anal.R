@@ -878,7 +878,99 @@ heatmap(
   #18-17 (cluster 3), and a large group in the middle: 19-10-14-13-15-2-11-4-8-12-16-22 (cluster 2)
 
 
-## 
+#### Reorder and display site-by-species data table
+#explore clusters' species content directly by reordering data according to group memberships
+#use vegemite() from {vegan} which accepts abundances on 0-9 scale
+
+#reorder data by clusters
+#values must be from 0-9 --> use normalized values
+#convert to 0-5 classes using Hill scale
+bio_hill <- coverscale(bio, scale="Hill") %>%
+  mutate(across(everything(), as.numeric))
+
+or <- vegemite(bio_hill, bio_chUPGMA_o)
+
+#apply heatmap
+heatmap(
+  t(bio_hill[rev(or$species)]),
+  Rowv=NA,
+  Colv=dend,
+  col=c("white", brewer.pal(5, "Greens")),
+  scale="none",
+  margin=c(4, 4),
+  ylab="Taxa (wieghted averages of sites)",
+  xlab="Sites"
+)
+
+#fyi: similar result can be achieved using tabasco...will look into later but it would be helpful
+  #to use final dendrogram (and thus clusters) to color the site-species by those groups and use
+  #shading to represent abundance
+
+#interpretation: TBD
+
+
+# Non-hierarchical Clustering=======================================================================
+## k-means partitioning-----
+#groups are identified as high-density regions in the data, which minimizes total error sums of
+  #squares (i.e., TESS, SSE, sum of within-group SS)
+#TESS = summation of the sum of squared Euclidean distances among objects in a group divided by
+  #the number of objects among k groups
+
+### k-means with random starts
+#inappropriate to use raw species abundance data with lots of 0s because it's a linear method
+#one recommendation is to use a non-Euclidean matrix (like Bray-Curtis), sqrt transform it,
+  #feed it into a PCoA to get the objects in Euclidean space and provide the PCoA axes into
+  #k-means partitioning process. Alternatively, chord transformation followed by computation of
+  #Euclidean distances preserves these distances among sites.
+
+#### k-mean partitioning of pre-transformed species data (using same number of groups as UPGMA)
+bio_kmeans <- kmeans(bio_norm, centers=5, nstart=100)
+#centers = clusters, nstart = # of times analysis is repeated; kmeans() utilizes different
+  #random initial configurations
+
+#compare with 5-group results from UPGMA
+table(bio_kmeans$cluster, bioch_UPGMA_g)
+#given that k-means clustering has a randomness component and that the cluster/group #s are 
+  #arbitrarily assigned, sites should not be expected to fall along the diagnonal if they are
+  #classified the same using the two methods. Instead, they should be consistently assigned to
+  #the same groups, even if those groups differ in number. In other words, there should be only
+  #one non-zero value in each row/column, and there are here
+
+
+#### Choose best number of clusters
+#instead of running kmeans() multiple times with different values for centers, vegan's wrapper 
+  #cascadeKM() can do this for you
+#2-10 groups
+bio_KM_cascade <- cascadeKM(
+  bio_norm,
+  inf.gr=2, #smallest number of groups
+  sup.gr=10, #largest number of groups
+  iter=100, #number of iterations
+  criterion="ssi" #criterion for group selection (= "Simple Structure Index")
+)
+
+summary(bio_KM_cascade)
+plot(bio_KM_cascade, sortg=TRUE) #sortg=TRUE groups objects according to cluster
+
+#interpretation: per this process using SSI, 9 groups is the best
+
+summary(bio_KM_cascade)
+bio_KM_cascade$results
+#returns the SSE (lower is better) and ssi (higher is better) for each # of groups
+#for a given value of k (within cluster #), SSE used to find the optimal grouping pattern, while
+  #ssi (or calinski) are good for determining optimal k value
+
+
+#### Examine group contents
+#reorder sites per k-means result
+bio_kmeans_g <- bio_kmeans$cluster
+bio[order(bio_kmeans_g), ]
+
+#reorder sites and species using function vegemite()
+ord_KM <- vegemite(bio_hill, bio_kmeans_g)
+bio[ord_KM$sites, ord_KM$species]
+
+
 
 
 
