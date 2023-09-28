@@ -963,16 +963,198 @@ bio_KM_cascade$results
 
 #### Examine group contents
 #reorder sites per k-means result
-bio_kmeans_g <- bio_kmeans$cluster
-bio[order(bio_kmeans_g), ]
+bio_kmeans_g <- bio_kmeans$cluster #assigns cluster identity for each site
+bio[order(bio_kmeans_g), ] #sorts/orders the columns
 
 #reorder sites and species using function vegemite()
-ord_KM <- vegemite(bio_hill, bio_kmeans_g)
+ord_KM <- vegemite(bio_hill, bio_kmeans_g) #bio_hill is 'normalized' data (integers from 0-9)
 bio[ord_KM$sites, ord_KM$species]
 
 
+### Use of k-means partitioning to optimize an independently obtained classification
+#an advantage of non-agglomerative clustering is using prior information (from clustering) to
+  #inform new clustering...in other words, with k-means sites can be seeded with an initial
+  #assignment then re-assigned later following new information (with agglomerative clustering,
+  #this translocation can't happen)
+
+#### k-means with UPGMA taxa means per group (centroids) as starting points
+#seed sites with UPGMA clusters (medoids; best clustering method from hierarchical clustering)
+  #and modify with k-means partitioning
+
+#mean taxanomic abundances on UPGMA site clusters
+groups <- as.factor(bioch_UPGMA_g) #turn UPGMA cluster ids into a fct
+bio_means <- matrix(0, ncol(bio), length(levels(groups))) #create empty matrix populated with 0s
+row.names(bio_means) <- colnames(bio) #assign taxonomic names to rows of matrix
+
+#assign normalized values to cells in matrix where columns = clusters
+for(i in 1:ncol(bio)) {
+  bio_means[i, ] <- tapply(bio_norm[, i], bioch_UPGMA_g, mean)
+}
+
+#mean taxonomic abundances as starting points
+startpoints <- t(bio_means) #transpose matrix
+#k-means on starting points
+bio_kmeans2 <- kmeans(bio_norm, centers = startpoints)
+
+
+#alternatively, return to hierarchical clustering, id the most "typical" object in each group
+  #(e.g., silhouette plot), and provide these medoids as starting points
+startobjects <- bio_norm[c(6, 13, 18, 20, 21), ]
+bio_kmeans3 <- kmeans(bio_norm, centers = startobjects)
+
+#compare with 5-group partition from UPGMA clustering
+table(bio_kmeans2$cluster, bioch_UPGMA_g) #seeding with all, normalized values
+table(bio_kmeans2$cluster, bioch_UPGMA_g) #seeding with most typical objects
+#each kmeans comparison to UPGMA is identical--all sites fall along the diagonal
+
+#compare the two kmeans results after seeding with UPGMA
+table(bio_kmeans2$cluster, bio_kmeans3$cluster) #unsurprisingly, they are the same
+
+#Silhouette plot of the final partition
+bioch_UPGMA_gk <- bio_kmeans2$cluster
+k <- 5
+sil <- silhouette(bioch_UPGMA_gk, bio_ch)
+rownames(sil) <- row.names(bio)
+plot(sil,
+     main="Silhouette plot - UPGMA & k-means",
+     cex.names=0.8,
+     col=2:(k + 1))
+
+
+#tidyverse approach
+n <- nrow(bio)
+k <- 5
+bioch_UPGMA_gk <- bio_kmeans2$cluster
+sil <- silhouette(bioch_UPGMA_gk, bio_ch)
+
+k_cols <- c("1" = "blue", "2" = "aquamarine", "4" = "red", "5" = "green")
+
+df_k_sil_kmeans <- tibble(site=seq_len(n)) %>%
+  bind_cols(sil) %>%
+  group_by(cluster) %>%
+  mutate(k_size=n(),
+         sil_width_avg=mean(sil_width) %>%
+           round(., 2),
+         text_x=case_when(
+           cluster==5 ~ 0.9*n,
+           cluster==4 ~ 0.5*n,
+           cluster==3 ~ NA_real_,
+           cluster==2 ~ 0.2*n,
+           cluster==1 ~ 0.1*n)
+         ) %>%
+  ungroup() %>%
+  mutate(sil_width_global_avg=mean(sil_width) %>%
+           round(., 2)) %>%
+  arrange(desc(cluster), sil_width) %>%
+  mutate(cluster=as.factor(cluster),
+         site=as.character(site),
+         site=fct_inorder(site))
+
+
+df_k_sil_kmeans_lab <- df_k_sil_kmeans %>%
+  select(cluster, k_size, sil_width_avg, text_x) %>%
+  distinct()
+
+df_k_sil_kmeans %>%
+  ggplot() +
+  geom_col(aes(x=site, y=sil_width, fill=cluster)) +
+  geom_text(data = df_k_sil_kmeans_lab,
+            aes(x=text_x, y=0.9, 
+                label=paste0(cluster, ": ", k_size, " | ", sil_width_avg)),
+            hjust=0) +
+  annotate("text", x= 23, y=0.9, 
+           label=paste("Avg si:", unique(df_k_sil_kmeans$sil_width_global_avg)),
+           hjust=0) +
+  scale_y_continuous(limits=c(0, 1), breaks=seq(0, 1, 0.2)) +
+  scale_fill_manual(values=k_cols, guide="none") +
+  coord_flip() +
+  labs(title="Silhouette plot - Chord - UPGMA & k-means",
+       subtitle=paste0("n = ", n),
+       y="Silhouette width si") +
+  theme_void() +
+  theme(axis.text=element_text(),
+        axis.line.x=element_line(),
+        axis.title.x=element_text(margin=margin(t=5, b=10)),
+        plot.title=element_text(face="bold"))
+#interpretation: clustering is identical between UPGMA and UPGMA-seeded and optimized by k-means
+
+#NOTE: clusters not plotted on map as they would be identical to UPGMA-only plot
+
+
+## Partitioning around medoids (PAM)----------
+#k objects (medoids) are identified that are representative of the structure of the data, and k
+  #clusters are constructed by assigning objects to the nearest medioid (goal is to minimize
+  #sum of dissimilarities between objects and associated medioids); in comparison, k-means
+  #clustering minimizes SS Euclidean distances within groups
+
+#cluster::pam() accepts raw data or dissimilaritiy matrices
+
+### PAM computed from chord distance matrix
+#choice of number of clusters--obtain avg silhouette widths (asws) for range of k
+asw <- numeric(nrow(bio))
+
+for(k in 2:(nrow(bio) - 1))
+  asw[k] <- pam(bio_ch, k, diss=TRUE)$silinfo$avg.width
+
+k.best <- which.max(asw)
+
+plot(
+  1:nrow(bio),
+  asw,
+  type="h",
+  main="Choice of the number of clusters",
+  xlab="k (number of clusters)",
+  ylab="Average silhouette width"
+)
+
+axis(
+  1,
+  k.best,
+  paste("optimum", k.best, sep="\n"),
+  col="red",
+  font=2,
+  col.axis="red"
+)
+
+points(k.best,
+       max(asw),
+       pch=16,
+       col="red",
+       cex=1.5)
+#result: k=5 is the best PAM solution, where asw = 0.469. Now let's run a PAM with 5 groups
+
+
+#tidyverse approach
+#purrr approach
+ks <- 2:(nrow(bio)-1)
+
+df_sil_width_pam <- ks %>%
+  purrr::map_dbl(~pam(bio_ch, .x, diss=TRUE)$silinfo$avg.width) %>%
+  tibble(k=ks, asw=.) %>%
+  mutate(k_best=asw==max(asw))
+
+optimize_k_line_graph(df_sil_width_pam, y=asw, y_lab="Average silhouette width", 
+                      main="PAM Silhouette Plot-optimal number of clusters")
+
+
+#PAM for k=5
+bio_ch_pam <- pam(bio_ch, k=5, diss=TRUE)
+summary(bio_ch_pam)
+
+bio_ch_pam_g <- bio_ch_pam$clustering
+bio_ch_pam$silinfo$widths
+
+#compare with classification from UPGMA clustering and from k-means
+table(bio_ch_pam_g, bioch_UPGMA_g) 
+table(bio_ch_pam_g, bio_kmeans_g)
+
+#interpretation: 
+  #1) clusters 1 & 2 line up perfectly but 3-5 have 0s on diagonal; however, groups
+    #3 & 4 (UPGMA) and 4 & 5 (PAM) align [will need to look into further]; 
+  #2) nothing aligns on diagonal...however, a few of the values have no shared values on the same
+    #row or column
 
 
 
-     
+
 
