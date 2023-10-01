@@ -753,7 +753,7 @@ plot_grid(p1, p2, labels="auto", label_x=0.9, label_y=0.925)
 #book approach
 k <- 5
 
-bioch_UPGMA_g <- cutree(bio_ch_ward, k=k)
+bioch_UPGMA_g <- cutree(bio_ch_UPGMA, k=k)
 sil <- silhouette(bioch_UPGMA_g, bio_ch)
 rownames(sil) <- row.names(bio)
 
@@ -767,58 +767,14 @@ plot(
 
 
 #tidyverse approach
-n <- nrow(bio)
+#need to recalculate (b/c use k=6 above)
 k <- 5
 bioch_UPGMA_g <- cutree(bio_ch_ward, k=k)
-sil <- silhouette(bioch_UPGMA_g, bio_ch)
 
-k_cols <- c("1" = "red", "2" = "green", "3" = "blue", "4" = "aquamarine")
-
-df_k_sil <- tibble(site=seq_len(n)) %>%
-  bind_cols(sil) %>%
-  group_by(cluster) %>%
-  mutate(k_size=n(),
-         sil_width_avg=mean(sil_width) %>%
-           round(., 2),
-         text_x=case_when(
-           cluster==1 ~ 0.9*n,
-           cluster==2 ~ 0.5*n,
-           cluster==3 ~ 0.2*n,
-           cluster==4 ~ 0.1*n,
-           TRUE       ~ NA_real_)
-         ) %>%
-  ungroup() %>%
-  mutate(sil_width_global_avg=mean(sil_width) %>%
-           round(., 2)) %>%
-  arrange(desc(cluster), sil_width) %>%
-  mutate(cluster=as.factor(cluster),
-         site=as.character(site),
-         site=fct_inorder(site))
-
-
-df_k_sil_lab <- df_k_sil %>%
-  select(cluster, k_size, sil_width_avg, text_x) %>%
-  distinct()
-
-df_k_sil %>%
-  ggplot() +
-  geom_col(aes(x=site, y=sil_width, fill=cluster)) +
-  geom_text(data = df_k_sil_lab,
-            aes(x=text_x, y=0.925, 
-                label=paste0(cluster, ": ", k_size, " | ", sil_width_avg))) +
-  annotate("text", x= n, y=0.925, 
-           label=paste("Avg si:", unique(df_k_sil$sil_width_global_avg))) +
-  scale_y_continuous(limits=c(0, 1), breaks=seq(0, 1, 0.2)) +
-  scale_fill_manual(values=k_cols, guide="none") +
-  coord_flip() +
-  labs(title="Silhouette plot - Chord - UPGMA",
-       subtitle=paste0("n = ", n),
-       y="Silhouette width si") +
-  theme_void() +
-  theme(axis.text=element_text(),
-        axis.line.x=element_line(),
-        axis.title.x=element_text(margin=margin(t=5, b=10)),
-        plot.title=element_text(face="bold"))
+#plot silhouette profile
+#with functions
+df_k_sil_upgma <- wrangle_sil_prof_data(data=bio, hclust_obj=bioch_UPGMA_g, dis_mat=bio_ch)
+plot_sil_profile(df=df_k_sil_upgma, title="Silhouette plot - Chord - UPGMA")
 #interpretation: no misclassifications (all positive), clusters 3 and 4 (smallest clusters aside
   #from solo cluster of site 21) have strongest classification
 
@@ -1010,6 +966,7 @@ table(bio_kmeans2$cluster, bioch_UPGMA_g) #seeding with most typical objects
 #compare the two kmeans results after seeding with UPGMA
 table(bio_kmeans2$cluster, bio_kmeans3$cluster) #unsurprisingly, they are the same
 
+
 #Silhouette plot of the final partition
 bioch_UPGMA_gk <- bio_kmeans2$cluster
 k <- 5
@@ -1022,61 +979,16 @@ plot(sil,
 
 
 #tidyverse approach
-n <- nrow(bio)
-k <- 5
 bioch_UPGMA_gk <- bio_kmeans2$cluster
-sil <- silhouette(bioch_UPGMA_gk, bio_ch)
-
-k_cols <- c("1" = "blue", "2" = "aquamarine", "4" = "red", "5" = "green")
-
-df_k_sil_kmeans <- tibble(site=seq_len(n)) %>%
-  bind_cols(sil) %>%
-  group_by(cluster) %>%
-  mutate(k_size=n(),
-         sil_width_avg=mean(sil_width) %>%
-           round(., 2),
-         text_x=case_when(
-           cluster==5 ~ 0.9*n,
-           cluster==4 ~ 0.5*n,
-           cluster==3 ~ NA_real_,
-           cluster==2 ~ 0.2*n,
-           cluster==1 ~ 0.1*n)
-         ) %>%
-  ungroup() %>%
-  mutate(sil_width_global_avg=mean(sil_width) %>%
-           round(., 2)) %>%
-  arrange(desc(cluster), sil_width) %>%
-  mutate(cluster=as.factor(cluster),
-         site=as.character(site),
-         site=fct_inorder(site))
 
 
-df_k_sil_kmeans_lab <- df_k_sil_kmeans %>%
-  select(cluster, k_size, sil_width_avg, text_x) %>%
-  distinct()
-
-df_k_sil_kmeans %>%
-  ggplot() +
-  geom_col(aes(x=site, y=sil_width, fill=cluster)) +
-  geom_text(data = df_k_sil_kmeans_lab,
-            aes(x=text_x, y=0.9, 
-                label=paste0(cluster, ": ", k_size, " | ", sil_width_avg)),
-            hjust=0) +
-  annotate("text", x= 23, y=0.9, 
-           label=paste("Avg si:", unique(df_k_sil_kmeans$sil_width_global_avg)),
-           hjust=0) +
-  scale_y_continuous(limits=c(0, 1), breaks=seq(0, 1, 0.2)) +
-  scale_fill_manual(values=k_cols, guide="none") +
-  coord_flip() +
-  labs(title="Silhouette plot - Chord - UPGMA & k-means",
-       subtitle=paste0("n = ", n),
-       y="Silhouette width si") +
-  theme_void() +
-  theme(axis.text=element_text(),
-        axis.line.x=element_line(),
-        axis.title.x=element_text(margin=margin(t=5, b=10)),
-        plot.title=element_text(face="bold"))
+#plot silhouette profile
+#with functions
+df_k_sil_upgma_kmeans <- wrangle_sil_prof_data(data=bio, hclust_obj=bioch_UPGMA_gk, dis_mat=bio_ch)
+plot_sil_profile(df=df_k_sil_upgma_kmeans, title="Silhouette plot - Chord - UPGMA & k-means")
 #interpretation: clustering is identical between UPGMA and UPGMA-seeded and optimized by k-means
+
+
 
 #NOTE: clusters not plotted on map as they would be identical to UPGMA-only plot
 
@@ -1155,6 +1067,55 @@ table(bio_ch_pam_g, bio_kmeans_g)
     #row or column
 
 
+#silhouette profile for k=5 groups, k-means and PAM
+#plot() approach
+par(mfrow=c(1, 2))
+k <- 5
+sil <- silhouette(bio_kmeans_g, bio_ch)
+rownames(sil) <- row.names(bio)
+
+#k-means silhouette profile
+plot(sil,
+     main="Silhouette plot - k-means",
+     cex.names=0.8,
+     col=2:(k + 1))
+
+#PAM silhouette profile
+plot(
+  silhouette(bio_ch_pam),
+  main="Silhouette plot - PAM",
+  cex.names=0.8, 
+  col=2:(k + 1)
+)
+
+#interpretation: 
+  #k-means: 5 cluster: one cluster has one sites, two have two sites, and the other two have at
+    #least five sites; asw = 0.5, and they range from 0.45-0.79 (excluding single site cluster)
+  #PAM: 5 clusters: two clusters with two sites (same as k-means), one cluster with four sites,
+    #one cluster with five sites, and one cluster with 10 sites; asw = 0.47, and they range
+    #from 0.14 to 0.79
+  #the largest differences reside in clusters 2 and 5
+
+
+#tidyverse approach
+#k-means
+df_k_sil_kmeans <- wrangle_sil_prof_data(data=bio, hclust_obj=bio_kmeans_g, dis_mat=bio_ch)
+p1 <- plot_sil_profile(df=df_k_sil_kmeans, title="Silhouette plot - k-means")
+
+#PAM
+df_k_sil_pam <- wrangle_sil_prof_data(data=bio, hclust_obj=bio_ch_pam)
+p2 <- plot_sil_profile(df=df_k_sil_pam, title="Silhouette plot - PAM")
+
+plot_grid(p1, p2)
+#largest differences are 1) cluster 2 has 13 sites in k-means and only 10 in PAM; 2) k-means has 
+  #a cluster with 1 site (#21) but this site is part of cluster 3 which combines site 21 with the
+  #3 sites absent from cluster 2 that are present in the k-means equivalent
+  #PAM also has an avg sil that's slightly less than k-means
+
+#NOTE TO SELF: feel free to compare more
+
+
+# Comparison with Environmental Data================================================================
 
 
 
