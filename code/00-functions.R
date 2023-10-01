@@ -209,6 +209,92 @@ optimize_k_line_graph <- function(data, y, k_best=k_best, y_lab, main, col=FALSE
 }
 
 
+## Silhouette plots----------
+### Wrangle data
+wrangle_sil_prof_data <- function(data, hclust_obj, dis_mat=NA) {
+  
+  n <- nrow(data)
+  
+  sil <- if(!is.na(dis_mat)) {
+    silhouette(hclust_obj, dis_mat)} else{
+      silhouette(hclust_obj)
+    }
+  
+  # df_k_sil <- tibble(site=seq_len(n)) %>%
+  #   bind_cols(sil) %>%
+    
+  df_k_sil <- sil %>%
+    as.data.frame() %>%
+    rownames_to_column(var="site") %>%
+    group_by(cluster) %>%
+    #'switch' for assigning clusters depending on whether dis_mat is NA or not
+    {if(!is.na(dis_mat))
+      mutate(., k_size=n(),
+             sil_width_avg=mean(sil_width) %>%
+               round(., 2),
+             text_x=case_when(
+               cluster=="1" ~ 0.93*n,
+               cluster=="2" ~ 0.5*n,
+               cluster=="3" ~ 0.2*n,
+               cluster=="4" ~ 0.1*n,
+               cluster=="5" ~ NA_real_)
+             ) else mutate(., k_size=n(),
+             sil_width_avg=mean(sil_width) %>%
+               round(., 2),
+             text_x=case_when(
+               cluster=="1" ~ 0.93*n,
+               cluster=="2" ~ 0.6*n,
+               cluster=="3" ~ 0.3*n,
+               cluster=="4" ~ 0.15*n,
+               cluster=="5" ~ 0.07*n)
+             )} %>%
+    ungroup() %>%
+    mutate(sil_width_global_avg=mean(sil_width) %>%
+             round(., 2)) %>%
+    arrange(desc(cluster), sil_width) %>%
+    mutate(cluster=as.factor(cluster),
+           site=as.character(site),
+           site=fct_inorder(site))
+}
+
+
+### Graph silhouette profile
+plot_sil_profile <- function(df, title) {
+  
+  #text labels
+  df_k_sil_lab <- df %>%
+    select(cluster, k_size, sil_width_avg, text_x) %>%
+    distinct()
+  
+  #colors (fills)
+  k_cols <- c("1" = "red", "2" = "green", "3" = "blue", "4" = "aquamarine", "5" = "purple")
+  
+  n <- nrow(df)
+  
+  df %>%
+    ggplot() +
+    geom_col(aes(x=site, y=sil_width, fill=cluster)) +
+    geom_text(data=df_k_sil_lab,
+              aes(x=text_x, y=0.925,
+                  label=paste0(cluster, ": ", k_size, " | ", sil_width_avg))) +
+    annotate("text", x= n, y=0.925,
+             label=paste("Avg si:", unique(df[["sil_width_global_avg"]]))) +
+    scale_y_continuous(limits=c(0, 1), breaks=seq(0, 1, 0.2)) +
+    scale_fill_manual(values=k_cols, guide="none") +
+    coord_flip() +
+    labs(title=title,
+         subtitle=paste0("n = ", n),
+         y="Silhouette width si") +
+    theme_void() +
+    theme(axis.text=element_text(),
+          axis.line.x=element_line(),
+          axis.title.x=element_text(margin=margin(t=5, b=10)),
+          plot.title=element_text(face="bold"))
+}
+
+
+
+
 
 
 
